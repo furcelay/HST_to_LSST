@@ -1,7 +1,7 @@
 from hsc_to_lsst.utils import photutils_background_iterative
-from lenstronomy.util import data_util
-import warnings
+from lenstronomy.Util import data_util
 import numpy as np
+# import warnings
 
 
 def add_noise(img,
@@ -45,13 +45,14 @@ def add_noise(img,
         if bkg_noise > img_std:
             if use_nise_diff:
                 noise = np.random.normal(scale=np.sqrt(bkg_noise**2 - img_std**2),
-                                        size=img.shape)
+                                         size=img.shape)
                 img = img + noise
             else:
                 noise = np.random.normal(scale=bkg_noise, size=img.shape)
                 img = img + noise
         else:
-            warnings.warn("Warning: original noise is larger than target")
+            # warnings.warn("Warning: original noise is larger than target")
+            raise ValueError("Background noise is larger than target")
 
     img_median = photutils_background_iterative(img)[0]
     img += background_median - img_median

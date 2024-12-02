@@ -1,36 +1,60 @@
 import numpy as np
 from astropy.convolution import Gaussian2DKernel
 from astropy.stats import gaussian_fwhm_to_sigma
-from scipy.interpolate import UnivariateSpline
+from hsc_to_lsst.utils import get_fwhm
+from astropy.convolution import convolve
+import warnings
 
 
-def psf_kernel_from_fhwm_diff(original_fwhm, new_fwhm, original_pix_scale):
-    trans_fwhm = np.sqrt(new_fwhm**2 - original_fwhm**2)
-    kernel_sigma = trans_fwhm * gaussian_fwhm_to_sigma / original_pix_scale
+def psf_kernel_from_fhwm(fwhm, pix_scale):
+    kernel_sigma = fwhm * gaussian_fwhm_to_sigma / pix_scale
     kernel = Gaussian2DKernel(x_stddev=kernel_sigma)
     return kernel
 
 
-def get_fwhm(psf, pix_scale):
-    # Define the center of the PSF (assuming it's approximately centered)
-    center_x = (psf.shape[1] - 1) // 2
-    center_y = (psf.shape[0] - 1) // 2
+def psf_kernel_from_fhwm_diff(original_fwhm, target_fwhm, original_pix_scale):
+    trans_fwhm = np.sqrt(target_fwhm**2 - original_fwhm**2)
+    return psf_kernel_from_fhwm(trans_fwhm, original_pix_scale)
 
-    # Extract the row and column passing through the center
-    central_row = psf[center_y, :]
-    central_col = psf[:, center_x]
 
-    half_max = np.max(psf) / 2
+def iterative_psf_transform_kernel(original_psf, target_fwhm,
+                                   original_pix_scale,
+                                   max_iters=3, thresh=0.01):
+    original_fwhm = get_fwhm(original_psf, original_pix_scale)
+    correction_factor = 0
+    trans_kernel = psf_kernel_from_fhwm_diff(original_fwhm + correction_factor, target_fwhm, original_pix_scale)
+    for i in range(max_iters):
+        transformed_psf = convolve(original_psf, trans_kernel)
+        transformed_fwhm = get_fwhm(transformed_psf, original_pix_scale)
+        if abs(transformed_fwhm - target_fwhm) < thresh:
+            break
+        correction_factor += transformed_fwhm - target_fwhm
+        trans_kernel = psf_kernel_from_fhwm_diff(original_fwhm + correction_factor, target_fwhm, original_pix_scale)
+    return trans_kernel
 
-    # Interpolating the central row and column to find FWHM
-    spline_row = UnivariateSpline(np.arange(len(central_row)), central_row - half_max, s=0)
-    spline_col = UnivariateSpline(np.arange(len(central_col)), central_col - half_max, s=0)
 
-    # Find the points where the profile crosses half maximum
-    fwhm_row = np.abs(spline_row.roots()[0] - spline_row.roots()[-1])
-    fwhm_col = np.abs(spline_col.roots()[0] - spline_col.roots()[-1])
-
-    # Average FWHM (for a circular PSF)
-    fwhm = (fwhm_row + fwhm_col) / 2
-
-    return fwhm * pix_scale
+def degrade_psf(
+        image,
+        original_fwhm=None,
+        target_fwhm=None,
+        original_psf=None,
+        target_psf=None,
+        original_pix_scale=0.15,
+        target_pix_scale=0.20,
+        max_iters=3,
+        thresh=0.01
+):
+    if target_psf is not None:
+        target_fwhm = get_fwhm(target_psf, target_pix_scale)
+    if original_psf is not None:
+        original_fwhm = get_fwhm(original_psf, original_pix_scale)
+        if original_fwhm > target_fwhm:
+            warnings.warn("Warning: original FWHM is larger than target")
+            return image
+        trans_kernel = iterative_psf_transform_kernel(original_psf, target_fwhm, original_pix_scale, max_iters, thresh)
+    else:
+        if original_fwhm > target_fwhm:
+            warnings.warn("Warning: original FWHM is larger than target")
+            return image
+        trans_kernel = psf_kernel_from_fhwm_diff(original_fwhm, target_fwhm, original_pix_scale)
+    return convolve(image, trans_kernel)
