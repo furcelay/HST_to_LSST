@@ -19,16 +19,17 @@ HSC_FWHM = {
 def query_and_degrade(
         ra,
         dec,
-        size,
-        field,
-        username,
-        password,
         dp0_sampler,
+        username=None,
+        password=None,
         num_visits=1,
-        zp_rms_frac_thresh=0.1
+        zp_rms_frac_thresh=0.1,
+        hsc_size_arcsec=20,
+        lsst_size_pix=61,
+        field="pdr3_wide",
 ):
     try:
-        hsc_data = query_hsc(username, password, ra, dec, size, field)
+        hsc_data = query_hsc(ra, dec, username, password, hsc_size_arcsec, field)
     except OSError:
         return False, None, None
 
@@ -71,7 +72,7 @@ def query_and_degrade(
                                         add_background_noise=True,
                                         use_nise_diff=True,
                                         to_adu=False,
-                                        out_size=64
+                                        out_size=lsst_size_pix
                                         )
             except Exception as e:
                 print(f"Error in band {band}: {type(e)} {e}")
