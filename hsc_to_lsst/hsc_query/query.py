@@ -1,14 +1,21 @@
 from hsc_to_lsst.hsc_query import downloadCutout, downloadPsf
-import io
 from astropy.io import fits
+import io
+import os
 
 
-def query_hsc(username, password, ra, dec, size=10, field="pdr3_wide"):
+def query_hsc(ra, dec, username=None, password=None, size=20, field="pdr3_wide"):
+
+    if username is None:
+        username = os.environ.get('HSC_SSP_CAS_USERNAME')
+    if password is None:
+        password = os.environ.get('HSC_SSP_CAS_PASSWORD')
+
     rect = downloadCutout.Rect.create(
         ra=str(ra),
         dec=str(dec),
-        sw=f"{size/2}arcmin",
-        sh=f"{size/2}arcmin",
+        sw=f"{size/2}arcsec",
+        sh=f"{size/2}arcsec",
         filter="all",
         rerun=field
     )
