@@ -6,7 +6,6 @@ import numpy as np
 
 def add_noise(img,
               lsst_band_props,
-              num_visits=1,
               exp_time=30.0,
               zero_point=31.0,
               background_noise=None,
@@ -18,13 +17,13 @@ def add_noise(img,
     img_median, img_std, _ = photutils_background_iterative(img)
     img = img - img_median
 
-    total_exp_time = num_visits * exp_time
+    num_exposures = exp_time / 15
 
     img_positive = np.where(img > 0, img, 0)
 
     # image with poisson noise in e-/s
     if add_poisson_noise:
-        img = np.random.poisson(lam=img_positive * total_exp_time) / total_exp_time
+        img = np.random.poisson(lam=img_positive * exp_time) / exp_time
 
     if add_background_noise:
         if background_noise is None:
@@ -35,10 +34,10 @@ def add_noise(img,
 
             bkg_noise = data_util.bkg_noise(
                     lsst_band_props['read_noise'],
-                    exp_time,
+                    15,
                     sky_brightness_cps,
                     lsst_band_props['pixel_scale'],
-                    num_visits,
+                    num_exposures,
                 )
         else:
             bkg_noise = background_noise

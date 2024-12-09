@@ -8,7 +8,6 @@ from hsc_to_lsst.data_degradation.noise import add_noise
 def hsc_to_lsst(
         hsc_img,
         lsst_band,
-        num_visits=1,
         exp_time=30.0,
         lsst_zero_point=31.0,
         hsc_fwhm=0.6,
@@ -55,7 +54,6 @@ def hsc_to_lsst(
     if add_poisson_noise or add_background_noise:
         hsc_img_conv_scaled_noise = add_noise(hsc_img_conv_scaled,
                                               lsst_band_props,
-                                              num_visits,
                                               exp_time,
                                               lsst_zero_point,
                                               background_noise=background_noise,

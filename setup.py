@@ -1,4 +1,3 @@
-import os
 from setuptools import setup, find_packages
 
 
@@ -16,11 +15,9 @@ setup(
         'scikit-learn',
         'tqdm'
     ],
-    # entry_points={
-    #     'console_scripts': [
-    #         'hsc_to_lsst = hsc_to_lsst.__main__:main'
-    #     ]
-    # },
+    scripts=[
+        'bin/degrade_hsc',
+    ],
     package_data={
         'hsc_to_lsst': ['data/*']
     },
