@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
-import argparse
 import base64
 import contextlib
 import csv
 import dataclasses
-import errno
 import getpass
 import io
 import math
 import os
 import re
-import sys
 import tarfile
-import tempfile
-import time
 import urllib.request
 
 from typing import cast, Any, Callable, Dict, Generator, IO, List, Optional, Tuple, Union
@@ -57,128 +52,6 @@ export("ANYTRACT")
 ANYTRACT = -1
 export("ALLFILTERS")
 ALLFILTERS = "all"
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        fromfile_prefix_chars="@",
-        description="""
-            Download FITS cutouts from the website of HSC data release.
-        """,
-    )
-    parser.add_argument("--ra", metavar="DEGREES", type=parse_longitude, help="""
-        R.A.2000.
-    """)
-    parser.add_argument("--dec", metavar="DEGREES", type=parse_latitude, help="""
-        Dec.2000.
-    """)
-    parser.add_argument("--sw", metavar="DEGREES", type=parse_degree, help="""
-        Semi-width in R.A. direction.
-    """)
-    parser.add_argument("--sh", metavar="DEGREES", type=parse_degree, help="""
-        Semi-height in Dec. direction.
-    """)
-    parser.add_argument("--filter", type=parse_filter_opt, help="""
-        Filter name.
-    """)
-    parser.add_argument("--rerun", choices=available_reruns, default=default_rerun, help="""
-        Rerun name.
-    """)
-    parser.add_argument("--tract", type=parse_tract_opt, help="""
-        Tract number.
-    """)
-    parser.add_argument("--image", metavar="BOOL", type=parse_bool, default=default_get_image, help=f"""
-        Get the image layer. (Default: {default_get_image})
-    """)
-    parser.add_argument("--mask", metavar="BOOL", type=parse_bool, default=default_get_mask, help=f"""
-        Get the mask layer. (Default: {default_get_mask})
-    """)
-    parser.add_argument("--variance", metavar="BOOL", type=parse_bool, default=default_get_variance, help=f"""
-        Get the variance layer. (Default: {default_get_variance})
-    """)
-    parser.add_argument("--type", choices=available_types, default=default_type, help="""
-        Data type.
-    """)
-    parser.add_argument("--name", type=str, default=default_name, help=f"""
-        Output name. (python's format string; default: "{default_name}")
-    """)
-    parser.add_argument("--list", metavar="PATH", type=str, help="""
-        Path to a coordinate list.
-        If this list is given, the other command-line arguments are optional.
-        Missing fields in the list will default
-        to the values given in the command-line.
-    """)
-    parser.add_argument("--listtype", choices=["auto", "txt", "csv"], default="auto", help="""
-        How to interpret the argument of --list.
-        "auto" (default): Follow the extension of the file name. /
-        "txt": Fields are separated by one or more spaces. /
-        "csv": Comma-separated volume.
-    """)
-    parser.add_argument("--user", type=str, help="""
-        User account.
-    """)
-    parser.add_argument("--password", type=str, help="""
-        Password.
-        If you specify --password, your password is disclosed to everybody
-        on the computer you use.
-        Use of --password-env is recommended instead,
-        especially when this script is run on a shared-use computer.
-    """)
-    parser.add_argument("--password-env", metavar="ENV", type=str, default="HSC_SSP_CAS_PASSWORD", help="""
-        Name of the environment variable from which to read password.
-        Use `read -s HSC_SSP_CAS_PASSWORD` to put your password into
-        $HSC_SSP_CAS_PASSWORD.
-    """)
-    parser.add_argument("--semaphore", metavar="PATH", type=str, default="", help=f"""
-        Path to the named semaphore (This is not a Posix semaphore.)
-        The default name is `/tmp/$(id -u -n)-downloadCutout`.
-        This path must be in NFS (or any other shared filesystem)
-        if you distribute the processes over a network.
-        If you specify this option, `--max-connections` is {default_max_connections} by default.
-    """)
-    parser.add_argument("--max-connections", metavar="NUM", type=int, default=0, help="""
-        Maximum number of connections in parallel.
-        This script itself won't make parallel connections,
-        but _you_ should launch this script in parallel.
-        The launched processes will communicate with each other to limit
-        the number of connections in parallel.
-        By default `--max-connections=0`, which means limitless.
-    """)
-
-    args = parser.parse_args()
-
-    rect = Rect.create(
-        rerun=args.rerun,
-        type=args.type,
-        filter=args.filter,
-        tract=args.tract,
-        ra=args.ra,
-        dec=args.dec,
-        sw=args.sw,
-        sh=args.sh,
-        image=args.image,
-        mask=args.mask,
-        variance=args.variance,
-        name=args.name,
-    )
-
-    if not args.password:
-        args.password = os.environ.get(args.password_env)
-
-    if args.list:
-        with open_inputfile(sys.stdin if args.list == "-" else args.list) as f:
-            rects = read_rects(f, default=rect, type=args.listtype)
-    else:
-        if not rect.iscomplete():
-            raise RuntimeError(f"Specify either (--ra --dec --sw --sh) or --list.")
-        rects = [rect]
-
-    if args.semaphore and not args.max_connections:
-        args.max_connections = default_max_connections
-    if args.max_connections:
-        set_max_connections(args.max_connections, args.semaphore)
-
-    download(rects, user=args.user, password=args.password, onmemory=False)
 
 
 @export
@@ -1031,34 +904,34 @@ def _download_chunk(rects: List[Tuple[Rect, Any]], user: str, password: str, *, 
 
     returnedlist = []
 
-    with get_connection_semaphore():
-        with urllib.request.urlopen(req, timeout=3600) as fin:
-            with tarfile.open(fileobj=fin, mode="r|") as tar:
-                for info in tar:
-                    fitem = tar.extractfile(info)
-                    if fitem is None:
-                        continue
-                    with fitem:
-                        metadata = _tar_decompose_item_name(info.name)
-                        rect, index = rects[metadata["lineno"] - 2]
-                        # Overwrite metadata's lineno (= lineno in this chunk)
-                        # with rect's lineno (= global lineno)
-                        # for fear of confusion.
-                        metadata["lineno"] = rect.lineno
-                        # Overwrite rect's tract (which may be ANYTRACT)
-                        # with metadata's tract (which is always a valid value)
-                        # for fear of confusion.
-                        rect.tract = metadata["tract"]
-                        metadata["rect"] = rect
-                        if onmemory:
-                            returnedlist.append((index, metadata, fitem.read()))
-                        else:
-                            filename = make_filename(metadata)
-                            dirname = os.path.dirname(filename)
-                            if dirname:
-                                os.makedirs(dirname, exist_ok=True)
-                            with open(filename, "wb") as fout:
-                                _splice(fitem, fout)
+
+    with urllib.request.urlopen(req, timeout=3600) as fin:
+        with tarfile.open(fileobj=fin, mode="r|") as tar:
+            for info in tar:
+                fitem = tar.extractfile(info)
+                if fitem is None:
+                    continue
+                with fitem:
+                    metadata = _tar_decompose_item_name(info.name)
+                    rect, index = rects[metadata["lineno"] - 2]
+                    # Overwrite metadata's lineno (= lineno in this chunk)
+                    # with rect's lineno (= global lineno)
+                    # for fear of confusion.
+                    metadata["lineno"] = rect.lineno
+                    # Overwrite rect's tract (which may be ANYTRACT)
+                    # with metadata's tract (which is always a valid value)
+                    # for fear of confusion.
+                    rect.tract = metadata["tract"]
+                    metadata["rect"] = rect
+                    if onmemory:
+                        returnedlist.append((index, metadata, fitem.read()))
+                    else:
+                        filename = make_filename(metadata)
+                        dirname = os.path.dirname(filename)
+                        if dirname:
+                            os.makedirs(dirname, exist_ok=True)
+                        with open(filename, "wb") as fout:
+                            _splice(fitem, fout)
 
     return returnedlist if onmemory else None
 
@@ -1162,127 +1035,3 @@ def _splice(fin: IO[bytes], fout: IO[bytes]):
         if n <= 0:
             break
         fout.write(buffer[:n])
-
-
-class Semaphore:
-    """
-    Named semaphore.
-
-    This semaphore can be shared by multiple machines
-    that mount a shared NFS.
-
-    It is guaranteed that the semaphore locked by this process
-    is automatically unlocked as soon as this process terminates.
-
-    Parameters
-    ----------
-    init_num
-        Initial semaphore count.
-        Zero or negative values mean infinity.
-    path
-        Path of the semaphore.
-        E.g. "/tmp/semaphore-cutout", "/share/data/sem_cutout" etc.
-        Be warned that many files will be made under this path (directory).
-    """
-    def __init__(self, init_num: int, path: str):
-        self.init_num = init_num
-        self.path = path
-        self.fd = -1
-
-        if init_num <= 0:
-            return
-
-        os.makedirs(path, exist_ok=True)
-
-    def __del__(self):
-        self.unlock()
-
-    def __enter__(self) -> "Semaphore":
-        self.lock()
-        return self
-
-    def __exit__(self, *args):
-        self.unlock()
-
-    def lock(self):
-        """
-        Wait the semaphore.
-        """
-        if self.init_num <= 0:
-            return
-        if self.fd != -1:
-            return
-
-        fd = -1
-
-        try:
-            while True:
-                for i in range(self.init_num):
-                    fd = os.open(os.path.join(self.path, f"{i}.sem"), os.O_RDWR | os.O_CREAT, 0o644)
-                    try:
-                        os.lockf(fd, os.F_TLOCK, 0);
-                        self.fd = fd
-                        fd = -1
-                        return
-                    except OSError as e:
-                        if e.errno not in (errno.EACCES, errno.EAGAIN):
-                            raise
-
-                    os.close(fd)
-                    fd = -1
-
-                time.sleep(0.01 * self.init_num)
-        finally:
-            if fd != -1:
-                os.close(fd)
-
-    def unlock(self):
-        """
-        Signal the semaphore.
-        """
-        if self.init_num <= 0:
-            return
-        if self.fd != -1:
-            tempfd = self.fd
-            self.fd = -1
-            os.close(tempfd)
-
-
-_sem_connections = Semaphore(0, "")
-
-
-@export
-def set_max_connections(num: int, semaphore_path: str = ""):
-    """
-    Set maximum number of connections.
-
-    Parameters
-    ----------
-    num
-        Number of connections. (Limitless if zero or negative)
-    semaphore_path
-        Path to the semaphore.
-        The default name is `/tmp/$(id -u -n)-downloadCutout`.
-    """
-    global _sem_connections
-
-    if num > 0 and not semaphore_path:
-        semaphore_path = os.path.join(tempfile.gettempdir(), f"{getpass.getuser()}-downloadCutout")
-
-    _sem_connections = Semaphore(num, semaphore_path)
-
-
-def get_connection_semaphore() -> Semaphore:
-    """
-    Get the semaphore configured by `set_max_connections()`
-
-    Returns
-    -------
-    semaphore
-        Semaphore configured by `set_max_connections()`
-    """
-    return _sem_connections
-
-
-if __name__ == "__main__":
-    main()

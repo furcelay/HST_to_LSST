@@ -20,19 +20,25 @@ def query_and_degrade(
         ra,
         dec,
         dp0_sampler,
+        lock,
         username=None,
         password=None,
         zp_rms_frac_thresh=0.1,
         hsc_size_arcsec=20,
         lsst_size_pix=61,
         field="pdr3_wide",
+        verbose=False
 ):
     try:
-        hsc_data = query_hsc(ra, dec, username, password, hsc_size_arcsec, field)
-    except OSError:
+        hsc_data = query_hsc(ra, dec, lock, username, password, hsc_size_arcsec, field)
+    except OSError as e:
+        if verbose:
+            print(f"Error querying HSC data: {type(e)} {e}")
         return False, None, None
     for band in 'grizy':
         if not hsc_data[band]:
+            if verbose:
+                print(f"Error querying HSC data: missing band {band}")
             return False, None, None
 
     pix_scale = WCS(hsc_data['g']['hdr']).wcs.cd[1, 1] * 3600
@@ -74,7 +80,8 @@ def query_and_degrade(
                                         out_size=lsst_size_pix
                                         )
             except Exception as e:
-                print(f"Error in band {band}: {type(e)} {e}")
+                if verbose:
+                    print(f"Error processing band {band}: {type(e)} {e}")
                 success = False
                 break
         degraded_images.append(deg_img_b)
@@ -110,6 +117,7 @@ def query_degrade_write(
         ra,
         dec,
         dp0_sampler,
+        lock,
         metadata=None,
         username=None,
         password=None,
@@ -117,17 +125,20 @@ def query_degrade_write(
         hsc_size_arcsec=20,
         lsst_size_pix=61,
         field="pdr3_wide",
+        verbose=False
 ):
     success, degraded_images, mag_change = query_and_degrade(
         ra,
         dec,
         dp0_sampler,
+        lock,
         username,
         password,
         zp_rms_frac_thresh,
         hsc_size_arcsec,
         lsst_size_pix,
         field,
+        verbose
     )
     if success:
         write_degraded_image(
