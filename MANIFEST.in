@@ -1,1 +1,1 @@
-include hsc_to_lsst/data/*.pkl
+recursive-include hsc_to_lsst/data *
