@@ -20,7 +20,7 @@ def query_and_degrade(
         ra,
         dec,
         dp0_sampler,
-        lock,
+        semaphore,
         username=None,
         password=None,
         zp_rms_frac_thresh=0.1,
@@ -30,7 +30,7 @@ def query_and_degrade(
         verbose=False
 ):
     try:
-        hsc_data = query_hsc(ra, dec, lock, username, password, hsc_size_arcsec, field)
+        hsc_data = query_hsc(ra, dec, semaphore, username, password, hsc_size_arcsec, field)
     except OSError as e:
         if verbose:
             print(f"Error querying HSC data: {type(e)} {e}")
@@ -54,7 +54,11 @@ def query_and_degrade(
     # change zero points
     dp0_rms = [dp0_stats[b]['rms'] for b in range(5)]
     dp0_zero_points = [dp0_stats[b]['zero_point'] for b in range(5)]
-    images, mag_change = zero_point_change(images, 27, dp0_zero_points, dp0_rms, rms_frac_thresh=zp_rms_frac_thresh)
+    images, mag_change = zero_point_change(images,
+                                           27,
+                                           dp0_zero_points,
+                                           dp0_rms,
+                                           rms_frac_thresh=zp_rms_frac_thresh)
 
     degraded_images = []
     success = True
@@ -117,7 +121,7 @@ def query_degrade_write(
         ra,
         dec,
         dp0_sampler,
-        lock,
+        semaphore,
         metadata=None,
         username=None,
         password=None,
@@ -131,7 +135,7 @@ def query_degrade_write(
         ra,
         dec,
         dp0_sampler,
-        lock,
+        semaphore,
         username,
         password,
         zp_rms_frac_thresh,

@@ -2,10 +2,9 @@ from hsc_to_lsst.hsc_query import downloadCutout  # , downloadPsf
 from astropy.io import fits
 import io
 import os
-from time import sleep
 
 
-def query_hsc(ra, dec, lock, username=None, password=None, size=20, field="pdr3_wide"):
+def query_hsc(ra, dec, semaphore, username=None, password=None, size=20, field="pdr3_wide"):
 
     if username is None:
         username = os.environ.get('HSC_SSP_CAS_USERNAME')
@@ -26,9 +25,7 @@ def query_hsc(ra, dec, lock, username=None, password=None, size=20, field="pdr3_
     #     filter="all",
     #     rerun=field,
     # )
-    with lock:
-        sleep(0.1)
-    image_list = downloadCutout.download(rect, user=username, password=password)
+    image_list = downloadCutout.download(rect, user=username, password=password, semaphore=semaphore)
     # with lock:
     #     psf_list = downloadPsf.download(psf_req, user=username, password=password)
 

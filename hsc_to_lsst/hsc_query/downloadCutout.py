@@ -10,6 +10,7 @@ import os
 import re
 import tarfile
 import urllib.request
+from multiprocessing import BoundedSemaphore
 
 from typing import cast, Any, Callable, Dict, Generator, IO, List, Optional, Tuple, Union
 
@@ -734,7 +735,13 @@ def parse_filter_opt(s: Optional[str]) -> str:
 
 
 @export
-def download(rects: Union[Rect, List[Rect]], user: Optional[str] = None, password: Optional[str] = None, *, onmemory: bool = True) -> Union[list, List[list], None]:
+def download(
+        rects: Union[Rect, List[Rect]],
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        semaphore: Optional[BoundedSemaphore] = BoundedSemaphore(),
+        *,
+        onmemory: bool = True) -> Union[list, List[list], None]:
     """
     Cut `rects` out of the sky.
 
@@ -746,6 +753,8 @@ def download(rects: Union[Rect, List[Rect]], user: Optional[str] = None, passwor
         Username. If None, it will be asked interactively.
     password
         Password. If None, it will be asked interactively.
+    semaphore
+        Semaphore object.
     onmemory
         Return `datalist` on memory.
         If `onmemory` is False, downloaded cut-outs are written to files.
@@ -769,7 +778,7 @@ def download(rects: Union[Rect, List[Rect]], user: Optional[str] = None, passwor
         rects = [cast(Rect, rects)]
     rects = cast(List[Rect], rects)
 
-    ret = _download(rects, user, password, onmemory=onmemory)
+    ret = _download(rects, user, password, semaphore, onmemory=onmemory)
     if isscalar and onmemory:
         ret = cast(List[list], ret)
         return ret[0]
@@ -777,7 +786,13 @@ def download(rects: Union[Rect, List[Rect]], user: Optional[str] = None, passwor
     return ret
 
 
-def _download(rects: List[Rect], user: Optional[str], password: Optional[str], *, onmemory: bool) -> Optional[List[list]]:
+def _download(
+        rects: List[Rect],
+        user: Optional[str],
+        password: Optional[str],
+        semaphore: BoundedSemaphore,
+        *,
+        onmemory: bool) -> Optional[List[list]]:
     """
     Cut `rects` out of the sky.
 
@@ -789,6 +804,8 @@ def _download(rects: List[Rect], user: Optional[str], password: Optional[str], *
         Username. If None, it will be asked interactively.
     password
         Password. If None, it will be asked interactively.
+    semaphore
+        Semaphore object.
     onmemory
         Return `datalist` on memory.
         If `onmemory` is False, downloaded cut-outs are written to files.
@@ -831,7 +848,7 @@ def _download(rects: List[Rect], user: Optional[str], password: Optional[str], *
     datalist: List[Tuple[int, dict, bytes]] = []
 
     for i in range(0, len(exploded_rects), chunksize):
-        ret = _download_chunk(exploded_rects[i : i+chunksize], user, password, onmemory=onmemory)
+        ret = _download_chunk(exploded_rects[i : i+chunksize], user, password, semaphore, onmemory=onmemory)
         if onmemory:
             datalist += cast(list, ret)
 
@@ -843,7 +860,14 @@ def _download(rects: List[Rect], user: Optional[str], password: Optional[str], *
     return returnedlist if onmemory else None
 
 
-def _download_chunk(rects: List[Tuple[Rect, Any]], user: str, password: str, *, onmemory: bool) -> Optional[list]:
+def _download_chunk(
+        rects: List[Tuple[Rect, Any]],
+        user: str,
+        password: str,
+        semaphore: BoundedSemaphore,
+        *,
+        onmemory: bool
+) -> Optional[list]:
     """
     Cut `rects` out of the sky.
 
@@ -904,34 +928,34 @@ def _download_chunk(rects: List[Tuple[Rect, Any]], user: str, password: str, *, 
 
     returnedlist = []
 
-
-    with urllib.request.urlopen(req, timeout=3600) as fin:
-        with tarfile.open(fileobj=fin, mode="r|") as tar:
-            for info in tar:
-                fitem = tar.extractfile(info)
-                if fitem is None:
-                    continue
-                with fitem:
-                    metadata = _tar_decompose_item_name(info.name)
-                    rect, index = rects[metadata["lineno"] - 2]
-                    # Overwrite metadata's lineno (= lineno in this chunk)
-                    # with rect's lineno (= global lineno)
-                    # for fear of confusion.
-                    metadata["lineno"] = rect.lineno
-                    # Overwrite rect's tract (which may be ANYTRACT)
-                    # with metadata's tract (which is always a valid value)
-                    # for fear of confusion.
-                    rect.tract = metadata["tract"]
-                    metadata["rect"] = rect
-                    if onmemory:
-                        returnedlist.append((index, metadata, fitem.read()))
-                    else:
-                        filename = make_filename(metadata)
-                        dirname = os.path.dirname(filename)
-                        if dirname:
-                            os.makedirs(dirname, exist_ok=True)
-                        with open(filename, "wb") as fout:
-                            _splice(fitem, fout)
+    with semaphore:
+        with urllib.request.urlopen(req, timeout=3600) as fin:
+            with tarfile.open(fileobj=fin, mode="r|") as tar:
+                for info in tar:
+                    fitem = tar.extractfile(info)
+                    if fitem is None:
+                        continue
+                    with fitem:
+                        metadata = _tar_decompose_item_name(info.name)
+                        rect, index = rects[metadata["lineno"] - 2]
+                        # Overwrite metadata's lineno (= lineno in this chunk)
+                        # with rect's lineno (= global lineno)
+                        # for fear of confusion.
+                        metadata["lineno"] = rect.lineno
+                        # Overwrite rect's tract (which may be ANYTRACT)
+                        # with metadata's tract (which is always a valid value)
+                        # for fear of confusion.
+                        rect.tract = metadata["tract"]
+                        metadata["rect"] = rect
+                        if onmemory:
+                            returnedlist.append((index, metadata, fitem.read()))
+                        else:
+                            filename = make_filename(metadata)
+                            dirname = os.path.dirname(filename)
+                            if dirname:
+                                os.makedirs(dirname, exist_ok=True)
+                            with open(filename, "wb") as fout:
+                                _splice(fitem, fout)
 
     return returnedlist if onmemory else None
 

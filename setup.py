@@ -12,7 +12,7 @@ setup(
         'reproject',
         'lenstronomy',
         'scipy',
-        'scikit-learn',
+        'scikit-learn==1.5.2',
         'tqdm'
     ],
     scripts=[
