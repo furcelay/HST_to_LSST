@@ -44,7 +44,6 @@ if out_dir is None:
 username = args.hsc_username
 password = args.hsc_password
 dp0_sampler = dp0_gmm_sampler(args.coadd_years)
-hsc_field = {"wide": "pdr3_wide", "deep": "pdr3_dud_rev"}[args.hsc_depth]
 
 
 if not os.path.exists(out_dir):
@@ -66,7 +65,7 @@ def process_row(idx):
         zp_rms_frac_thresh=0.3,
         hsc_size_arcsec=20,
         lsst_size_pix=61,
-        field=hsc_field,
+        field=args.hsc_release,
         verbose=args.verbose
     )
     return succeed, mag_change
