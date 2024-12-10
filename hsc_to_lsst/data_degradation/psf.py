@@ -39,7 +39,7 @@ def degrade_psf(
         target_fwhm=None,
         original_psf=None,
         target_psf=None,
-        original_pix_scale=0.15,
+        original_pix_scale=0.168,
         target_pix_scale=0.20,
         max_iters=3,
         thresh=0.01

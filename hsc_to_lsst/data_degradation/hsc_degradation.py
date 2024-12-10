@@ -12,7 +12,7 @@ def hsc_to_lsst(
         lsst_zero_point=31.0,
         hsc_fwhm=0.6,
         hsc_psf=None,
-        hsc_pix_scale=0.15,
+        hsc_pix_scale=0.168,
         lsst_fwhm=None,
         lsst_psf=None,
         background_noise=None,

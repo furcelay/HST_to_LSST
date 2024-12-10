@@ -17,7 +17,10 @@ def parse_args():
                         help="Output file")
     parser.add_argument("--coadd_years", '-y', type=str, default="1",
                         help="Years of coadd to use, can be a number or 'single_visit'")
-    parser.add_argument("--hsc_depth", type=str, default="wide", choices=["wide", "deep"],
+    parser.add_argument("--hsc_release", type=str, default="pdr3_dud_rev",
+                        choices=["pdr3_dud_rev", "pdr3_dud", "pdr3_wide",
+                                 "pdr2_dud", "pdr2_wide",
+                                 "pdr1_udeep", "pdr1_deep", "pdr1_wide", "pdr1_ssp_uh_cosmos"],
                         help="HSC depth to use, can be 'wide' or 'deep'")
     parser.add_argument("--num_processes", '-np', type=int, default=10,
                         help="Number of processes to use")
@@ -38,8 +41,8 @@ catalog = Table.read(args.input_table)
 out_dir = args.output_dir
 if out_dir is None:
     out_dir = os.path.splitext(args.input_table)[0] + "_degraded"
-username = "furcelay"  # args.hsc_username
-password = "pEnEyGApijMw3fcMjhs0q+APud5d5E5Nl/4mlXOJ"  # args.hsc_password
+username = args.hsc_username
+password = args.hsc_password
 dp0_sampler = dp0_gmm_sampler(args.coadd_years)
 hsc_field = {"wide": "pdr3_wide", "deep": "pdr3_dud_rev"}[args.hsc_depth]
 
