@@ -18,8 +18,6 @@ setup(
     scripts=[
         'bin/degrade_hsc',
     ],
-    package_data={
-        'hsc_to_lsst': ['data/*']
-    },
+    include_package_data=True,
     author='Felipe Urcelay, LSST Strong Lensing Science Collaboration',
 )
