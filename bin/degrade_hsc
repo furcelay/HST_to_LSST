@@ -63,7 +63,7 @@ def process_row(idx):
         semaphore,
         username=username,
         password=password,
-        zp_rms_frac_thresh=0.1,
+        zp_rms_frac_thresh=0.3,
         hsc_size_arcsec=20,
         lsst_size_pix=61,
         field=hsc_field,
