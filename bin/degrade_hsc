@@ -1,0 +1,101 @@
+#!/home/felipe/Documents/HSC_to_LSST/.venv/bin/python
+from hsc_to_lsst.pipeline import query_degrade_write
+from hsc_to_lsst.lsst_props import dp0_gmm_sampler
+from tqdm import tqdm
+from multiprocessing import Pool, BoundedSemaphore
+from tqdm import trange
+from argparse import ArgumentParser
+from astropy.table import Table
+import os
+
+
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument("input_table", type=str,
+                        help="Input file")
+    parser.add_argument("--output_dir", '-o', type=str, default=None,
+                        help="Output file")
+    parser.add_argument("--coadd_years", '-y', type=str, default="1",
+                        help="Years of coadd to use, can be a number or 'single_visit'")
+    parser.add_argument("--hsc_release", type=str, default="pdr3_dud_rev",
+                        choices=["pdr3_dud_rev", "pdr3_dud", "pdr3_wide",
+                                 "pdr2_dud", "pdr2_wide",
+                                 "pdr1_udeep", "pdr1_deep", "pdr1_wide", "pdr1_ssp_uh_cosmos"],
+                        help="HSC depth to use, can be 'wide' or 'deep'")
+    parser.add_argument("--num_processes", '-np', type=int, default=10,
+                        help="Number of processes to use")
+    parser.add_argument("--num_connections", '-nc', type=int, default=8,
+                        help="Number of connections to use for the HSC query")
+    parser.add_argument("--hsc_username", type=str, default=None,
+                        help="HSC username, otherwise use env variable HSC_SSP_CAS_USERNAME")
+    parser.add_argument("--hsc_password", type=str, default=None,
+                        help="HSC password, otherwise use env variable HSC_SSP_CAS_PASSWORD")
+    parser.add_argument("--verbose", '-v', action="store_true",
+                        help="Verbose output")
+    return parser.parse_args()
+
+
+args = parse_args()
+catalog = Table.read(args.input_table)
+
+out_dir = args.output_dir
+if out_dir is None:
+    out_dir = os.path.splitext(args.input_table)[0] + "_degraded"
+username = args.hsc_username
+password = args.hsc_password
+dp0_sampler = dp0_gmm_sampler(args.coadd_years)
+
+
+if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
+
+
+def process_row(idx):
+    row = catalog[idx]
+    ra, dec = row['ra'], row['dec']
+    out_filename = os.path.join(out_dir, f"{idx:06d}")
+    succeed, mag_change = query_degrade_write(
+        out_filename,
+        ra,
+        dec,
+        dp0_sampler,
+        semaphore,
+        username=username,
+        password=password,
+        zp_rms_frac_thresh=0.3,
+        hsc_size_arcsec=20,
+        lsst_size_pix=61,
+        field=args.hsc_release,
+        verbose=args.verbose
+    )
+    return succeed, mag_change
+
+
+def init_child(semaphore_):
+    global semaphore
+    semaphore = semaphore_
+
+
+if __name__ == "__main__":
+    semaphore = BoundedSemaphore(args.num_connections)
+
+    if args.num_processes == 1:
+        out_data = [process_row(idx) for idx in trange(len(catalog))]
+    else:
+        with Pool(args.num_processes, initializer=init_child, initargs=(semaphore,)) as pool:
+            out_data = list(tqdm(pool.imap(process_row, range(len(catalog))), total=len(catalog)))
+        # out_data = process_map(process_row, range(len(catalog)),
+        #                        max_workers=num_processes, chunksize=chunk_size)
+
+    success = [x[0] for x in out_data]
+    mag_changes = [x[1] for x in out_data]
+
+    num_completed = sum(success)
+    num_failed = len(success) - sum(success)
+
+    success_catalog = catalog[success]
+    success_catalog["mag_change"] = [mag for mag, suc in zip(mag_changes, success) if suc]
+    success_catalog["filename"] = [f"{idx:06d}.fits" for idx, suc in enumerate(success) if suc]
+    success_catalog.write(os.path.join(f"{out_dir}_catalog.fits"), overwrite=True)
+
+    print(f"All done, completed: {num_completed}, failed: {num_failed}")
