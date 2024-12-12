@@ -1,4 +1,4 @@
-#!/home/felipe/Documents/HSC_to_LSST/.venv/bin/python
+#!/usr/bin/env python3
 from hsc_to_lsst.pipeline import query_degrade_write
 from hsc_to_lsst.lsst_props import dp0_gmm_sampler
 from tqdm import tqdm

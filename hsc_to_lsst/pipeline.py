@@ -3,7 +3,6 @@ from hsc_to_lsst.data_degradation.zero_point import zero_point_change
 from hsc_to_lsst.data_degradation.hsc_degradation import hsc_to_lsst
 from astropy.wcs import WCS
 from astropy.io import fits
-import numpy as np
 import warnings
 
 
