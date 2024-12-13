@@ -4,6 +4,7 @@ from hsc_to_lsst.data_degradation.hsc_degradation import hsc_to_lsst
 from astropy.wcs import WCS
 from astropy.io import fits
 import warnings
+# import tarfile
 
 
 HSC_FWHM = {
@@ -30,7 +31,8 @@ def query_and_degrade(
 ):
     try:
         hsc_data = query_hsc(ra, dec, semaphore, username, password, hsc_size_arcsec, field)
-    except OSError as e:
+    # this needs to keep going regardless of the error (common: OSError and tarfile.ReadError)
+    except Exception as e:
         if verbose:
             print(f"Error querying HSC data: {type(e)} {e}")
         return False, None, None
@@ -82,6 +84,7 @@ def query_and_degrade(
                                         to_adu=False,
                                         out_size=lsst_size_pix
                                         )
+            # this needs to keep going regardless of the error (common: ValueError)
             except Exception as e:
                 if verbose:
                     print(f"Error processing band {band}: {type(e)} {e}")
